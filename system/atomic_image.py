@@ -23,11 +23,10 @@ short_description: Manage the container images on the atomic host platform
 description:
     - Manage the container images on the atomic host platform
     - Allows to execute the commands on the container images
-    - Commands ```install``` and ```run``` will download the container image if not present already
 version_added: "2.2"
 author: "Saravanan KR @krsacme"
 notes:
-    - Host should be an atomic platform (verified by existence of '/run/ostree-booted' file)
+    - Host should be support ```atomic``` command
 requirements:
   - atomic
 options:
@@ -36,24 +35,25 @@ options:
           - Name of the container image
         required: True
         default: null
-    upgrade:
-        description:
-          - Forcefully upgrade if the container, even if the container is already running
-        required: False
-        choices: ["yes", "no"]
-        default: no
     state:
         description:
-          - The state of the container image
+          - The state of the container image.
+          - The state ```latest``` will ensure container image is upgraded to the latest version and forcefully restart container, if running.
         required: False
-        choices: ["started", "stopped"]
-        default: started
+        choices: ["present", "absent", "latest"]
+        default: latest
+    started:
+        description:
+          - Start or Stop the continer
+        required: False
+        choices: ["yes", "no"]
+        default: yes
 '''
 
 EXAMPLES = '''
 
 # Execute the run command on rsyslog container image (atomic run rhel7/rsyslog)
-- atomic_image: name=rhel7/rsyslog state=started
+- atomic_image: name=rhel7/rsyslog state=latest
 
 '''
 
@@ -78,25 +78,31 @@ def do_upgrade(module, image):
 
 def core(module):
     image = module.params['name']
-    upgrade = module.params['upgrade']
     state = module.params['state']
+    started = module.params['started']
     is_upgraded = False
 
-    if state == 'started':
-        if upgrade:
+    if state == 'present' or state == 'latest':
+        if state == 'latest':
             is_upgraded = do_upgrade(module, image)
-        args = ['atomic', 'run', image]
-    elif state == 'stopped':
-        args = ['atomic', 'stop', image]
+
+        if started:
+            args = ['atomic', 'run', image]
+        else:
+            args = ['atomic', 'install', image]
+    elif state == 'absent':
+        args = ['atomic', 'uninstall', image]
 
     out = {}
     err = {}
     rc = 0
     rc, out, err = module.run_command(args, check_rc=False)
 
-    if rc != 0: # something went wrong emit the msg
+    if rc < 0:
         module.fail_json(rc=rc, msg=err)
-    elif state == 'started' and 'Container is running' in out:
+    elif rc == 1 and 'already present' in err:
+        module.exit_json(restult=err, changed=is_upgraded)
+    elif started and 'Container is running' in out:
         module.exit_json(result=out, changed=is_upgraded)
     else:
         module.exit_json(msg=out, changed=True)
@@ -106,8 +112,8 @@ def main():
     module = AnsibleModule(
                 argument_spec = dict(
                     name    = dict(default=None, required=True),
-                    upgrade = dict(default='no', type='bool'),
-                    state   = dict(default='started', choices=['started', 'stopped']),
+                    state   = dict(default='latest', choices=['present', 'absent', 'latest']),
+                    started = dict(default='yes', type='bool'),
                 ),
             )
 
