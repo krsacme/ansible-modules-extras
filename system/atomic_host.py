@@ -27,6 +27,9 @@ version_added: "2.2"
 author: "Saravanan KR @krsacme"
 notes:
     - Host should be an atomic platform (verified by existence of '/run/ostree-booted' file)
+requirements:
+  - atomic
+  - "python >= 2.6"
 options:
     revision:
         description:
@@ -58,6 +61,8 @@ def core(module):
     revision = module.params['revision']
     args = []
 
+    module.run_command_environ_update = dict(LANG='C', LC_ALL='C', LC_MESSAGES='C')
+
     if revision == 'latest':
         args = ['atomic', 'host', 'upgrade']
     else:
@@ -70,7 +75,7 @@ def core(module):
     rc, out, err = module.run_command(args, check_rc=False)
 
     if rc == 77 and revision == 'latest':
-        module.exit_json(msg="Already on latest")
+        module.exit_json(msg="Already on latest", changed=False)
     elif rc != 0:
         module.fail_json(rc=rc, msg=err)
     else:

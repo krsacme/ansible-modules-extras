@@ -29,6 +29,7 @@ notes:
     - Host should be support ```atomic``` command
 requirements:
   - atomic
+  - "python >= 2.6"
 options:
     name:
         description:
@@ -81,6 +82,8 @@ def core(module):
     state = module.params['state']
     started = module.params['started']
     is_upgraded = False
+
+    module.run_command_environ_update = dict(LANG='C', LC_ALL='C', LC_MESSAGES='C')
 
     if state == 'present' or state == 'latest':
         if state == 'latest':
